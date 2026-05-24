@@ -1,3 +1,7 @@
+.codegraph/
+patches/.codegraph/
+custom/.codegraph/
+scripts/.codegraph/
 vscode*
 VS*/*
 VSCode*
