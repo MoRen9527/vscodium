@@ -1,4 +1,5 @@
 .codegraph/
+.cursor/
 patches/.codegraph/
 custom/.codegraph/
 scripts/.codegraph/

@@ -23,11 +23,11 @@
 
 ## Local CodeGraph Index
 
-- 2026-05-24 已由 CTO 小狄技术线完成本地 CodeGraph 试点探测，并由本模块 CodeRegistry 接管索引限制说明。
-- 索引范围只试探 `patches/` 本地补丁面；不对仓根、`upstream/` 或上游源码镜像做 CodeGraph 初始化，避免把周期性 upstream 噪音误写成本地代码事实。
-- 当前摘要：0 files，0 nodes，0 edges，languages 为空。
-- 说明：当前本地差异主要以 `.patch` 文件呈现，现有 CodeGraph parser 未产出可用语义图。该结果只能说明“当前 CodeGraph 不适合作为 vscodium 补丁面的语义索引”，不能说明本地补丁不存在。
-- 后续 vscodium CodeRegistry 仍应以 `patches/`、`custom/`、构建脚本和 upstream/local 边界的人工梳理为主；`.codegraph/` 只作为本地探测缓存，不作为仓库真源提交。
+- 2026-05-26 已由 CTO 小狄技术线完成模块根级本地 CodeGraph 初始化，并由本模块 CodeRegistry 接管索引限制说明。
+- 索引范围当前主要落在仓根 YAML / workflow 配置面；不对 `vscode/` 上游源码镜像做 CodeGraph 收口判断，避免把周期性 upstream 噪音误写成本地代码事实。
+- 当前摘要：14 files，0 nodes，0 edges，language `yaml`。
+- 说明：当前本地差异仍主要以 `.patch` 文件与构建配置呈现，现有 CodeGraph parser 未产出可用代码语义图。该结果只能说明“当前 CodeGraph 只能提供弱语义配置索引”，不能说明本地补丁不存在。
+- 后续 vscodium CodeRegistry 仍应以 `patches/`、`custom/`、构建脚本和 upstream/local 边界的人工梳理为主；`.codegraph/` 与 `.cursor/` 只作为本地探测缓存，不作为仓库真源提交。
 
 ## Git Health
 
