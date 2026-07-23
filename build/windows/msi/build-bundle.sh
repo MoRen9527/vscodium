@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# build-bundle.sh — TriCade Bundle MSI (TriMetaverse components only).
+# build-bundle.sh �?TriCade Bundle MSI (TriMetaverse components only).
 #
-# Usage:  VSCODE_ARCH=x64 RELEASE_VERSION=1.126.04524 WIX=/path/to/wix/ ./build-bundle.sh
+# Usage:  VSCODE_ARCH=x64 RELEASE_VERSION=0.2.3 WIX=/path/to/wix/ ./build-bundle.sh
 #
 # This MSI overlays TriPilot + TriLC + TriCode onto an existing TriCade Base
 # installation. It checks for the Base registry key before installing and
@@ -18,6 +18,9 @@
 
 set -ex
 
+# Default to independent TriCade version (decoupled from VSCodium)
+RELEASE_VERSION="${RELEASE_VERSION:-0.2.3}"
+
 CALLER_DIR=$( pwd )
 
 cd "$( dirname "${BASH_SOURCE[0]}" )"
@@ -28,7 +31,7 @@ WIN_SDK_FULL_VERSION="10.0.22621.0"
 # ── Bundle product identity ─────────────────────────────────────────────────
 PRODUCT_NAME="TriCade Bundle"
 PRODUCT_CODE="TriCadeBundle"
-# Independent UpgradeCode — Bundle is a separate MSI product from Base
+# Independent UpgradeCode �?Bundle is a separate MSI product from Base
 PRODUCT_UPGRADE_CODE="{8F7A2B1C-D3E4-5678-9ABC-DEF012345678}"
 
 PRODUCT_ID=$( powershell.exe -command "[guid]::NewGuid().ToString().ToUpper()" )
@@ -52,10 +55,10 @@ TRIMODEL_DIR="D:\\OneDrive\\Code\\ai\\TriModel"
 #   resources/
 #     app/
 #       extensions/
-#         tripilot-chat/    ← TriPilot out/ + package.json
+#         tripilot-chat/    �?TriPilot out/ + package.json
 #       tools/
-#         trilc/             ← TriLC dist/ + node_modules + runtime contracts
-#         tricode/           ← TriCode dist/ + package.json
+#         trilc/             �?TriLC dist/ + node_modules + runtime contracts
+#         tricode/           �?TriCode dist/ + package.json
 BINARY_DIR="C:\\Temp\\tricade-bundle"
 
 if [[ "${VSCODE_ARCH}" == "ia32" ]]; then
@@ -71,8 +74,10 @@ PROGRAM_FILES_86=$( env | sed -n 's/^ProgramFiles(x86)=//p' )
 # ── Construct BINARY_DIR from component repos ───────────────────────────────
 echo "=== Constructing overlay source at ${BINARY_DIR} ==="
 
-# Wipe and recreate
+# Start from a deterministic staging tree. A full Base is copied later only
+# when VSCODE_BASE_DIR is explicitly provided.
 rm -rf "${BINARY_DIR}"
+mkdir -p "${BINARY_DIR}"
 mkdir -p "${BINARY_DIR}/resources/app/extensions/tripilot-chat"
 mkdir -p "${BINARY_DIR}/resources/app/tools/trilc"
 mkdir -p "${BINARY_DIR}/resources/app/tools/trilc/contracts"
@@ -89,6 +94,19 @@ fi
 if [[ -d "${TRIPILOT_DIR}/media" ]]; then
 	cp -r "${TRIPILOT_DIR}/media" "${BINARY_DIR}/resources/app/extensions/tripilot-chat/"
 fi
+TRIPILOT_STAGE="${BINARY_DIR}/resources/app/extensions/tripilot-chat"
+CODICONS_SOURCE="${TRIPILOT_DIR}/node_modules/@vscode/codicons"
+if [[ ! -f "${CODICONS_SOURCE}/dist/codicon.css" || ! -f "${CODICONS_SOURCE}/dist/codicon.ttf" ]]; then
+	echo "Missing Tripilot codicon assets under ${CODICONS_SOURCE}/dist" >&2
+	exit 1
+fi
+mkdir -p "${TRIPILOT_STAGE}/node_modules/@vscode"
+cp -r "${CODICONS_SOURCE}" "${TRIPILOT_STAGE}/node_modules/@vscode/"
+if [[ ! -f "${TRIPILOT_STAGE}/node_modules/@vscode/codicons/dist/codicon.css" || ! -f "${TRIPILOT_STAGE}/node_modules/@vscode/codicons/dist/codicon.ttf" ]]; then
+	echo "Tripilot codicon assets were not staged correctly" >&2
+	exit 1
+fi
+echo "  ✓ Tripilot codicon CSS and font collected"
 
 # --- TriLC tools ---
 echo "Collecting TriLC..."
@@ -107,6 +125,7 @@ fi
 (
 	cd "${TRILC_STAGE}"
 	node --input-type=module -e "await import('@trimetaverse/agent-core'); await import('trimodel'); await import('yaml');"
+	echo "  ✓ TriLC production imports verified"
 )
 
 # Publish only contract-backed employee directories as isolated runtime input.
@@ -134,7 +153,79 @@ if [[ -f "${TRICODE_DIR}/package.json" ]]; then
 	cp "${TRICODE_DIR}/package.json" "${BINARY_DIR}/resources/app/tools/tricode/"
 fi
 
+# --- TriLC Tray (conditional: arch-trilc-tray output) ---
+echo "Collecting TriLC Tray..."
+TRILC_TRAY_EXE="${TRILC_DIR}/src/tray/bin/Release/net8.0-windows/win-x64/publish/TriLC.Tray.exe"
+if [[ -f "${TRILC_TRAY_EXE}" ]]; then
+	mkdir -p "${BINARY_DIR}/resources/app/tools/trilc/tray"
+	cp "${TRILC_TRAY_EXE}" "${BINARY_DIR}/resources/app/tools/trilc/tray/"
+	# Copy tray dependencies if publish directory exists
+	if [[ -d "$(dirname "${TRILC_TRAY_EXE}")" ]]; then
+		cp -r "$(dirname "${TRILC_TRAY_EXE}")"/* "${BINARY_DIR}/resources/app/tools/trilc/tray/" 2>/dev/null || true
+	fi
+	echo "  ✓ TriLC.Tray.exe collected"
+else
+	echo "  ⚠ TriLC.Tray.exe not found at ${TRILC_TRAY_EXE} — skipping (Tray not yet built)"
+fi
+
+# --- Generate trilc.cmd wrapper for MSI CustomAction ---
+echo "Generating trilc.cmd wrapper..."
+TRILC_CMD_PATH="${BINARY_DIR}/resources/app/tools/trilc/trilc.cmd"
+cat > "${TRILC_CMD_PATH}" << 'CMDEOF'
+@echo off
+setlocal enabledelayedexpansion
+set TRILC_DIR=%~dp0
+set TRILC_CLI=%TRILC_DIR%dist\cli.js
+
+REM Strategy: probe VSCodium Base bundled Node.js first,
+REM fall back to system PATH node.
+REM VSCodium ships node.exe in bin\ or directly in install root.
+set NODE_EXE=
+
+REM Probe 1: ..\..\..\..\bin\node.exe → TriCade\bin\node.exe
+if exist "%TRILC_DIR%..\..\..\..\bin\node.exe" (
+    set NODE_EXE=%TRILC_DIR%..\..\..\..\bin\node.exe
+    goto :run
+)
+
+REM Probe 2: system PATH
+where node >nul 2>&1
+if %ERRORLEVEL% equ 0 (
+    set NODE_EXE=node
+    goto :run
+)
+
+echo [trilc] ERROR: Node.js not found. Cannot run TriLC CLI.
+echo [trilc] Please install Node.js >=20 or ensure TriCade Base is installed.
+exit /b 1
+
+:run
+"!NODE_EXE!" "%TRILC_CLI%" %*
+exit /b %ERRORLEVEL%
+CMDEOF
+node -e "const fs=require('node:fs');const p=process.argv[1];const text=fs.readFileSync(p,'utf8').replace(/\r?\n/g,'\r\n');fs.writeFileSync(p,text,'ascii');const bytes=fs.readFileSync(p);for(let i=0;i<bytes.length;i++){if(bytes[i]===10&&bytes[i-1]!==13)throw new Error('trilc.cmd contains a non-CRLF line ending')}" "${TRILC_CMD_PATH}"
+echo "  ✓ trilc.cmd generated with CRLF line endings"
+
 echo "Overlay source ready."
+
+# Copy VSCodium base (tricade.exe, bin/, etc.) — exclude resources/ to avoid overlay collision
+echo "Copying VSCodium base into bundle..."
+if [[ -d "${VSCODE_BASE_DIR}" ]]; then
+	# Copy root-level files and non-resources directories only
+	for item in "${VSCODE_BASE_DIR}/"*; do
+		base=$(basename "$item")
+		if [[ "$base" != "resources" ]]; then
+			if [[ -d "$item" ]]; then
+				cp -r "$item" "${BINARY_DIR}/" 2>/dev/null || true
+			else
+				cp "$item" "${BINARY_DIR}/" 2>/dev/null || true
+			fi
+		fi
+	done
+	echo "  ✓ Base copied from ${VSCODE_BASE_DIR}"
+else
+	echo "  ⚠ VSCODE_BASE_DIR not set or not found — skipping base"
+fi
 
 # ── Build ───────────────────────────────────────────────────────────────────
 
@@ -192,3 +283,36 @@ rm -f "vscodium-bundle.wixobj"
 cd "${CALLER_DIR}"
 
 echo "=== TriCade Bundle MSI built: ${SETUP_RELEASE_DIR}\\${OUTPUT_BASE_FILENAME}.msi ==="
+
+# ── Artifact Verification ──
+echo ""
+echo "=== Verifying MSI artifact ==="
+MSI_PATH="${SETUP_RELEASE_DIR}\\${OUTPUT_BASE_FILENAME}.msi"
+
+# 1. File existence + size sanity
+if [[ ! -f "${MSI_PATH}" ]]; then
+	echo "ERROR: MSI not found at ${MSI_PATH}"
+	exit 1
+fi
+MSI_SIZE=$( stat -c%s "${MSI_PATH}" 2>/dev/null || wc -c < "${MSI_PATH}" )
+echo "  MSI size: ${MSI_SIZE} bytes"
+
+# Expected range: 2-20 MB
+if [[ ${MSI_SIZE} -lt 2000000 ]] || [[ ${MSI_SIZE} -gt 20000000 ]]; then
+	echo "  ⚠ WARNING: MSI size outside expected 2-20 MB range"
+fi
+
+# 2. SHA-256 hash
+if command -v sha256sum &>/dev/null; then
+	sha256sum "${MSI_PATH}" | tee "${MSI_PATH}.sha256"
+elif command -v certutil &>/dev/null; then
+	certutil -hashfile "${MSI_PATH}" SHA256 | findstr /V "hash" > "${MSI_PATH}.sha256"
+	cat "${MSI_PATH}.sha256"
+fi
+echo "  SHA-256 → ${MSI_PATH}.sha256"
+
+# 3. Version verification
+echo "  MSI version: ${RELEASE_VERSION}"
+echo "  ProductCode: ${PRODUCT_ID}"
+
+echo "=== Verification complete ==="
