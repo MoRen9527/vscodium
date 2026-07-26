@@ -19,7 +19,7 @@
 set -ex
 
 # Default to independent TriCade version (decoupled from VSCodium)
-RELEASE_VERSION="${RELEASE_VERSION:-0.2.3}"
+RELEASE_VERSION="${RELEASE_VERSION:-0.2.6}"
 
 CALLER_DIR=$( pwd )
 
@@ -45,7 +45,7 @@ SETUP_RELEASE_DIR=".\\releasedir"
 TRIPILOT_DIR="D:\\OneDrive\\Code\\ai\\TriPilot"
 TRILC_DIR="D:\\OneDrive\\Code\\ai\\TriLC"
 TRICODE_DIR="D:\\OneDrive\\Code\\ai\\TriCode"
-TRICOMPANY_SOURCE_DIR="D:\\OneDrive\\Code\\ai\\TriCompany\\.github\\source-agents"
+TRICOMPANY_SOURCE_DIR="D:\\OneDrive\\Code\\ai\\TriCompany\\source-agents"
 TRIMC_AGENT_CORE_DIR="D:\\OneDrive\\Code\\ai\\TriMC\\packages\\agent-core"
 TRIMODEL_DIR="D:\\OneDrive\\Code\\ai\\TriModel"
 
@@ -118,14 +118,16 @@ npm install --prefix "${TRILC_STAGE}" \
 	--omit=dev --install-links --ignore-scripts --no-save --package-lock=false \
 	"file:${TRIMC_AGENT_CORE_DIR}" \
 	"file:${TRIMODEL_DIR}" \
-	"yaml@^2.9.0"
+	"yaml@^2.9.0" \
+	"marked@^12.0.2" \
+	"ink@^5.2.0"
 if [[ -f "${TRILC_DIR}/package.json" ]]; then
 	cp "${TRILC_DIR}/package.json" "${TRILC_STAGE}/"
 fi
 (
 	cd "${TRILC_STAGE}"
 	node --input-type=module -e "await import('@trimetaverse/agent-core'); await import('trimodel'); await import('yaml');"
-	echo "  ✓ TriLC production imports verified"
+	echo "  ✓ TriLC production imports verified (agent-core + trimodel + yaml)"
 )
 
 # Publish only contract-backed employee directories as isolated runtime input.
@@ -152,6 +154,12 @@ fi
 if [[ -f "${TRICODE_DIR}/package.json" ]]; then
 	cp "${TRICODE_DIR}/package.json" "${BINARY_DIR}/resources/app/tools/tricode/"
 fi
+
+# --- nssm (Windows service wrapper) ---
+echo "Collecting nssm..."
+mkdir -p "${BINARY_DIR}/resources/app/tools/nssm"
+cp "D:\\OneDrive\\Code\\ai\\TriMetaverse\\tools\\nssm\\nssm.exe" "${BINARY_DIR}/resources/app/tools/nssm/"
+echo "  nssm.exe copied"
 
 # --- TriLC Tray (conditional: arch-trilc-tray output) ---
 echo "Collecting TriLC Tray..."
