@@ -155,12 +155,6 @@ if [[ -f "${TRICODE_DIR}/package.json" ]]; then
 	cp "${TRICODE_DIR}/package.json" "${BINARY_DIR}/resources/app/tools/tricode/"
 fi
 
-# --- nssm (Windows service wrapper) ---
-echo "Collecting nssm..."
-mkdir -p "${BINARY_DIR}/resources/app/tools/nssm"
-cp "D:\\OneDrive\\Code\\ai\\TriMetaverse\\tools\\nssm\\nssm.exe" "${BINARY_DIR}/resources/app/tools/nssm/"
-echo "  nssm.exe copied"
-
 # --- TriLC Tray (conditional: arch-trilc-tray output) ---
 echo "Collecting TriLC Tray..."
 TRILC_TRAY_EXE="${TRILC_DIR}/src/tray/bin/Release/net8.0-windows/win-x64/publish/TriLC.Tray.exe"
