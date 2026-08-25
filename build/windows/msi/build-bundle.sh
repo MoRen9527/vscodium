@@ -130,6 +130,15 @@ fi
 	echo "  ✓ TriLC production imports verified (agent-core + trimodel + yaml)"
 )
 
+# --- TriLC default .env (key-cache bootstrap token) ---
+# dotenv (via trimodel) loads this at daemon startup so key-cache can
+# authenticate to the TriModel config-plane API on port 3333.
+echo "Generating trilc .env (default API token)..."
+cat > "${TRILC_STAGE}/.env" << 'TRILCENVEOF'
+TRIMODEL_API_TOKEN=tmv-sk-dev-local
+TRILCENVEOF
+echo "  ✓ trilc .env written with TRIMODEL_API_TOKEN"
+
 # Publish only contract-backed employee directories as isolated runtime input.
 # This path is outside .github/agents and is never exposed to VS Code discovery.
 contract_count=0
